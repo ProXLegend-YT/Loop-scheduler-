@@ -5,8 +5,8 @@
 // (Both get added automatically if you install the Upstash Redis
 // integration from the Vercel Marketplace.)
 
-const BASE = process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const BASE = process.env.KV_REST_API_URL;
+const TOKEN = process.env.KV_REST_API_TOKEN;
 
 async function redis(...command) {
   if (!BASE || !TOKEN) {
