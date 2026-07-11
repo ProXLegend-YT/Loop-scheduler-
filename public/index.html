@@ -1,1 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop — scheduled URL pinger</title>
+<style>
+  :root{
+    --ink:#12151a;
+    --paper:#eef0f2;
+    --line:#c7ccd3;
+    --accent:#3b6dff;
+    --good:#2bb673;
+    --bad:#e0473f;
+    --mono: "SF Mono", "Consolas", "Menlo", monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:var(--paper); color:var(--ink);
+    font-family:var(--mono); display:flex; flex-direction:column; align-items:center;
+    padding:32px 16px 64px;
+  }
+  .wrap{width:100%; max-width:640px;}
+  .eyebrow{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 6px;}
+  h1{margin:0; font-size:28px; letter-spacing:-0.02em;}
+  p.sub{color:#565d68; margin:8px 0 24px; font-size:14px; line-height:1.5;}
 
+  .panel{background:#fff; border:1px solid var(--line); padding:20px; margin-bottom:20px;}
+  label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:#565d68; margin-bottom:6px;}
+  .row{display:flex; gap:10px;}
+  input[type=url]{
+    flex:1; padding:10px 12px; border:1px solid var(--line); background:var(--paper);
+    color:var(--ink); font-family:var(--mono); font-size:14px;
+  }
+  input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  button{
+    font-family:var(--mono); font-size:13px; padding:10px 18px;
+    border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer;
+  }
+  button.secondary{background:#fff; color:var(--ink);}
+  button.danger{background:#fff; color:var(--bad); border-color:var(--bad);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button:hover:not(:disabled){opacity:.85;}
+
+  .item{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 0; border-bottom:1px solid var(--line); font-size:13px;
+  }
+  .item:last-child{border-bottom:none;}
+  .item .url{word-break:break-all;}
+  .meta{color:#8790a0; font-size:11px; margin-top:4px;}
+  .dot{width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px;}
+  .dot.ok{background:var(--good);}
+  .dot.err{background:var(--bad);}
+  .dot.pending{background:#c7ccd3;}
+  .empty{color:#8790a0; font-size:13px; padding:8px 0;}
+  .hint{font-size:12px; color:#8790a0; margin-top:14px; line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Utility</p>
+  <h1>Loop</h1>
+  <p class="sub">
+    Add a URL below. A cron-job.org schedule pings <code>/api/run-all</code> once a minute,
+    which fetches every URL in this list — even if this tab, or any browser, is closed.
+  </p>
+
+  <div class="panel">
+    <label for="url">URL to ping</label>
+    <div class="row">
+      <input type="url" id="url" placeholder="https://example.com" />
+      <button id="addBtn">Add</button>
+    </div>
+    <p class="hint">
+      This only queues the URL. You still need to point a cron-job.org job at
+      <code>/api/run-all</code> (every 1 minute) — see the README for the one-time setup.
+    </p>
+  </div>
+
+  <div class="panel">
+    <label>Scheduled URLs</label>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+  const urlInput = document.getElementById('url');
+  const addBtn = document.getElementById('addBtn');
+  const listEl = document.getElementById('list');
+
+  async function fetchList(){
+    const res = await fetch('/api/schedule');
+    const data = await res.json();
+    render(data.urls || {});
+  }
+
+  function statusDot(entry){
+    if (!entry.lastPingedAt) return '<span class="dot pending"></span>never pinged yet';
+    if (entry.lastStatus === 'error') return '<span class="dot err"></span>error on last ping';
+    return `<span class="dot ok"></span>last ping: HTTP ${entry.lastStatus}`;
+  }
+
+  function render(urls){
+    const ids = Object.keys(urls);
+    if (ids.length === 0){
+      listEl.innerHTML = '<p class="empty">Nothing scheduled yet.</p>';
+      return;
+    }
+    listEl.innerHTML = ids.map(id => {
+      const e = urls[id];
+      const when = e.lastPingedAt ? new Date(e.lastPingedAt).toLocaleString() : '—';
+      return `
+        <div class="item">
+          <div>
+            <div class="url">${e.url}</div>
+            <div class="meta">${statusDot(e)} · ${when}</div>
+          </div>
+          <button class="danger" data-id="${id}">Remove</button>
+        </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('button[data-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        await fetch('/api/schedule?id=' + encodeURIComponent(btn.dataset.id), { method: 'DELETE' });
+        fetchList();
+      });
+    });
+  }
+
+  addBtn.addEventListener('click', async () => {
+    const v = urlInput.value.trim();
+    if (!v) return;
+    addBtn.disabled = true;
+    try {
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: v })
+      });
+      if (res.ok){
+        urlInput.value = '';
+        fetchList();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Could not add URL');
+      }
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); });
+
+  fetchList();
+  setInterval(fetchList, 15000); // refresh the view periodically
+</script>
+</body>
+</html>
