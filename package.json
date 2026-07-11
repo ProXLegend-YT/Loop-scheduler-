@@ -1,0 +1,6 @@
+{
+  "name": "loop-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pings a list of URLs on a schedule, even with no browser tab open. Uses Upstash Redis for storage and an external cron (cron-job.org) as the trigger."
+}

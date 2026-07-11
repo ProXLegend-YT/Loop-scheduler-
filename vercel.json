@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/run-all.js": {
+      "maxDuration": 30
+    }
+  }
+}
